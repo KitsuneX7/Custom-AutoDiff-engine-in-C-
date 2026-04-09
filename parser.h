@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iostream>
 #include <queue>
 #include <set>
@@ -16,6 +17,7 @@ typedef enum {
 } COLOR;
 
 class Node {
+
 public:
 
     string label;
@@ -25,18 +27,23 @@ public:
     Node() : visited(false), color(WHITE) {}
     Node(string l) : label(l), visited(false), color(WHITE) {}
 
+    bool isLeaf() const { return adj.size() == 0; }
+
 };
 
 class DAG {
+
 public:
 
-    size_t n;
     vector<Node> nodes;
-    DAG(size_t num) : n(num), nodes(num) {}
+    vector<Node> tempNodes;
+    size_t tempCoord;
+    unordered_map<string, int> uniqueNodes;
+    DAG(size_t num) : nodes(num) {}
 
     void addEdge(size_t a, size_t b) { nodes[a].adj.push_back(b); }
 
-    bool isEdge(size_t a, size_t b) { for (size_t i: nodes[a].adj) if (i == b) return true; return false; }
+    bool isEdge(size_t a, size_t b) const { for (size_t i: nodes[a].adj) if (i == b) return true; return false; }
 
     void clearVisited() { for (size_t i = 0; i < nodes.size(); i++) nodes[i].visited  = false; }
   
@@ -50,8 +57,8 @@ public:
     }
 
     bool hasCycle() {
-        for(size_t i = 0; i < n; i++) nodes[i].color = WHITE;
-        for(size_t i = 0; i < n; i++) if (nodes[i].color == WHITE && dfs_hasCycle(i)) return true;
+        for(size_t i = 0; i < nodes.size(); i++) nodes[i].color = WHITE;
+        for(size_t i = 0; i < nodes.size(); i++) if (nodes[i].color == WHITE && dfs_hasCycle(i)) return true;
         return false; 
     }
 
@@ -113,7 +120,6 @@ public:
             }
             bool isAtom = true;
             for (auto& op: precedence) if (op.first == tokens[i]) isAtom = false;
-            for (string u: unary) if (u == tokens[i]) isAtom = false;
             if (isAtom) output.push(tokens[i]); else {
                 while (!operators.empty() && operators.top() != "(" && precedence[tokens[i]] <= precedence[operators.top()]) { output.push(operators.top()); operators.pop(); }
                 operators.push(tokens[i]);
@@ -128,7 +134,7 @@ public:
             bool isAtom = true;
             bool isUnaryOp = false;
             for (auto& op: precedence) if (op.first == output.front()) isAtom = false;
-            for (string u: unary) if (u == output.front()) { isAtom = false; isUnaryOp = true; }
+            for (string u: unary) if (u == output.front()) isUnaryOp = true;
             if (isAtom) nodeOrder.push(i); else if (isUnaryOp) {
                 if (nodeOrder.empty()) throw invalid_argument("Invalid expression!");
                 Parsed.addEdge(i, nodeOrder.top());
@@ -136,10 +142,12 @@ public:
                 nodeOrder.push(i);
             } else {
                 if (nodeOrder.size() < 2) throw invalid_argument("Invalid expression!");
-                Parsed.addEdge(i, nodeOrder.top());
+                int second = nodeOrder.top();
                 nodeOrder.pop();
-                Parsed.addEdge(i, nodeOrder.top());
+                int first = nodeOrder.top();
                 nodeOrder.pop();
+                Parsed.addEdge(i, first);
+                Parsed.addEdge(i, second);
                 nodeOrder.push(i);
             }
             output.pop();
@@ -147,7 +155,49 @@ public:
         return Parsed;
     }
 
+    string toInfix(int nodeCoord, int parentPrec = 0) const {
+        Node node = nodes[nodeCoord];
+        if (node.isLeaf()) return node.label;
+        if (node.adj.size() == 1) { return node.label + "(" + toInfix(node.adj[0], 0) + ")"; }
+        int currentPrecedence = precedence.at(node.label);
+        string result = toInfix(node.adj[0], currentPrecedence) + " " + node.label + " " + toInfix(node.adj[1], currentPrecedence);
+        if (currentPrecedence < parentPrec) { return "(" + result + ")"; } 
+        return result;
+    }
+
+    DAG getPartialDerivative(string varToDerive) { 
+        deriveMemo.clear();
+        transposeMemo.clear();
+        size_t size = derive(nodes.size() - 1, varToDerive); 
+        DAG PartialDerivative(size + 1);
+        PartialDerivative.nodes = tempNodes;
+        return PartialDerivative;
+    }
+
+    void printDFS() {
+        cout << "DFS: ";
+        stack<size_t> DFS;
+        if (nodes.empty()) return;
+        DFS.push(nodes.size() - 1);
+        nodes[nodes.size() - 1].visited = true;
+        while (!DFS.empty()) {
+            size_t size = DFS.size();
+            for (size_t i = 0; i < size; i++) {
+                size_t currentCoord = DFS.top();
+                DFS.pop();
+                Node currentNode = nodes[currentCoord];
+                cout << currentNode.label + " ";
+                vector<size_t> aux = currentNode.adj;
+                reverse(aux.begin(), aux.end());
+                for (size_t adjacent: aux) if (!nodes[adjacent].visited) { DFS.push(adjacent); nodes[adjacent].visited = true; }
+            }
+        }
+        clearVisited();
+        cout << endl;
+    }
+
     void printBFS() {
+        cout << "BFS: ";
         queue<size_t> BFS;
         if (nodes.empty()) return;
         BFS.push(nodes.size() - 1);
@@ -158,11 +208,85 @@ public:
                 size_t currentCoord = BFS.front();
                 BFS.pop();
                 Node currentNode = nodes[currentCoord];
-                cout << currentNode.label << endl;
+                cout << currentNode.label + " ";
                 for (size_t adjacent: currentNode.adj) if (!nodes[adjacent].visited) { BFS.push(adjacent); nodes[adjacent].visited = true; }
             }
         }
         clearVisited();
+        cout << endl;
+    }
+
+private:
+
+    unordered_map<string, size_t> constantMemo;
+    unordered_map<size_t, size_t> transposeMemo;
+    unordered_map<size_t, size_t> deriveMemo;
+
+    size_t getOrCreateConstant(const string& varToDerive) {
+        if (constantMemo.count(varToDerive)) return constantMemo[varToDerive];
+        tempNodes.push_back(Node(varToDerive));
+        return constantMemo[varToDerive] = tempNodes.size() - 1;
+    }
+
+    size_t transpose(size_t coord) {
+        if (transposeMemo.count(coord)) return transposeMemo[coord];
+        Node newNode(nodes[coord].label);
+        for (size_t oldChildIndex : nodes[coord].adj) { newNode.adj.push_back(transpose(oldChildIndex)); }
+        tempNodes.push_back(newNode);
+        return transposeMemo[coord] = tempNodes.size() - 1;
+    }
+
+    size_t derive(int coord, const string& varToDerive) {
+        if (deriveMemo.count(coord)) return deriveMemo[coord];
+        if (nodes[coord].isLeaf()) { tempNodes.push_back(Node(nodes[coord].label == varToDerive ? "1" : "0")); } 
+        else if (nodes[coord].label == "+") {
+            size_t l = derive(nodes[coord].adj[0], varToDerive);
+            size_t r = derive(nodes[coord].adj[1], varToDerive);
+            if (tempNodes[l].label == "0") return r;
+            if (tempNodes[r].label == "0") return l;
+            tempNodes.push_back(Node("+"));
+            tempNodes.back().adj = {l, r};
+        } else if (nodes[coord].label == "-") {
+            size_t l = derive(nodes[coord].adj[0], varToDerive);
+            size_t r = derive(nodes[coord].adj[1], varToDerive);
+            if (tempNodes[l].label == "0") { getOrCreateConstant("-" + tempNodes[r].label); return tempNodes.size() - 1; }
+            if (tempNodes[r].label == "0") return l;
+            tempNodes.push_back(Node("-"));
+            tempNodes.back().adj = {l, r};
+        } else if (nodes[coord].label == "*") {
+            size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
+            size_t g = transpose(nodes[coord].adj[1]);
+            size_t g_prime = derive(nodes[coord].adj[1], varToDerive);
+            size_t f = transpose(nodes[coord].adj[0]);
+            tempNodes.push_back(Node("*"));
+            tempNodes.back().adj = {f_prime, g};
+            size_t term1 = tempNodes.size() - 1;
+            tempNodes.push_back(Node("*"));
+            tempNodes.back().adj = {f, g_prime};
+            size_t term2 = tempNodes.size() - 1;
+            tempNodes.push_back(Node("+"));
+            tempNodes.back().adj = {term1, term2};
+        } else if (nodes[coord].label == "/") {
+            size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
+            size_t g = transpose(nodes[coord].adj[1]);
+            size_t g_prime = derive(nodes[coord].adj[1], varToDerive);
+            size_t f = transpose(nodes[coord].adj[0]);
+            tempNodes.push_back(Node("*"));
+            tempNodes.back().adj = {f_prime, g};
+            size_t term1 = tempNodes.size() - 1;
+            tempNodes.push_back(Node("*"));
+            tempNodes.back().adj = {f, g_prime};
+            size_t term2 = tempNodes.size() - 1;
+            tempNodes.push_back(Node("-"));
+            tempNodes.back().adj = {term1, term2};
+            size_t term3 = tempNodes.size() - 1;
+            tempNodes.push_back(Node("^"));
+            tempNodes.back().adj = {g, getOrCreateConstant("2")};
+            size_t term4 = tempNodes.size() - 1;
+            tempNodes.push_back(Node("/"));
+            tempNodes.back().adj = {term3, term4};
+        }
+        return deriveMemo[coord] = tempNodes.size() - 1;
     }
 
 };
