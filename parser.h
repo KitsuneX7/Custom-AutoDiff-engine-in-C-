@@ -237,10 +237,10 @@ private:
     unordered_map<size_t, size_t> transposeMemo;
     unordered_map<size_t, size_t> deriveMemo;
 
-    size_t getOrCreateConstant(const string& varToDerive) {
-        if (constantMemo.count(varToDerive)) return constantMemo[varToDerive];
-        tempNodes.push_back(Node(varToDerive));
-        return constantMemo[varToDerive] = tempNodes.size() - 1;
+    size_t getOrCreateConstant(const string& constant) {
+        if (constantMemo.count(constant)) return constantMemo[constant];
+        tempNodes.push_back(Node(constant));
+        return constantMemo[constant] = tempNodes.size() - 1;
     }
 
     size_t transpose(size_t coord) {
@@ -258,121 +258,160 @@ private:
         return false;
     }
 
+    size_t makeNeg(size_t a) {
+        if (tempNodes[a].label == "0") return a;
+        tempNodes.push_back(Node("~"));
+        tempNodes.back().adj = {a};
+        return tempNodes.size() - 1;
+    }
+
+    size_t makeAdd(size_t a, size_t b) {
+        if (tempNodes[a].label == "0") return b;
+        if (tempNodes[b].label == "0") return a;
+        tempNodes.push_back(Node("+"));
+        tempNodes.back().adj = {a, b};
+        return tempNodes.size() - 1;
+    }
+
+    size_t makeSub(size_t a, size_t b) {
+        if (tempNodes[a].label == "0") return makeNeg(b);
+        if (tempNodes[b].label == "0") return a;
+        tempNodes.push_back(Node("-"));
+        tempNodes.back().adj = {a, b};
+        return tempNodes.size() - 1;
+    }
+
+    size_t makeMult(size_t a, size_t b) {
+        if (tempNodes[a].label == "0" || tempNodes[b].label == "0") return getOrCreateConstant("0");
+        if (tempNodes[a].label == "1") return b;
+        if (tempNodes[b].label == "1") return a;
+        tempNodes.push_back(Node("*"));
+        tempNodes.back().adj = {a, b};
+        return tempNodes.size() - 1;
+    }
+
+    size_t makeDiv(size_t a, size_t b) {
+        if (tempNodes[a].label == "0") return getOrCreateConstant("0");
+        if (tempNodes[a].label == tempNodes[b].label) return getOrCreateConstant("1");
+        tempNodes.push_back(Node("/"));
+        tempNodes.back().adj = {a, b};
+        return tempNodes.size() - 1;
+    }
+
+    size_t makePow(size_t a, size_t b) {
+        if (tempNodes[a].label == "0") return getOrCreateConstant("0");
+        if (tempNodes[b].label == "0" || tempNodes[a].label == "1") return getOrCreateConstant("1");
+        if (tempNodes[b].label == "1") return a;
+        tempNodes.push_back(Node("^"));
+        tempNodes.back().adj = {a, b};
+        return tempNodes.size() - 1;
+    }
+
+    size_t makeSin(size_t a) {
+        tempNodes.push_back(Node("sin"));
+        tempNodes.back().adj = {a};
+        return tempNodes.size() - 1;
+    }
+
+    size_t makeCos(size_t a) {
+        tempNodes.push_back(Node("cos"));
+        tempNodes.back().adj = {a};
+        return tempNodes.size() - 1;
+    }
+
+    size_t makeTan(size_t a) {
+        tempNodes.push_back(Node("tan"));
+        tempNodes.back().adj = {a};
+        return tempNodes.size() - 1;
+    }
+
+    size_t makeLog(size_t a) {
+        if (tempNodes[a].label == "e") return getOrCreateConstant("1");
+        tempNodes.push_back(Node("log"));
+        tempNodes.back().adj = {a};
+        return tempNodes.size() - 1;
+    }
+
     size_t derive(int coord, const string& varToDerive) {
         if (deriveMemo.count(coord)) return deriveMemo[coord];
-        if (nodes[coord].isLeaf()) { tempNodes.push_back(Node(nodes[coord].label == varToDerive ? "1" : "0")); } 
+        size_t last;
+        if (nodes[coord].isLeaf()) { tempNodes.push_back(Node(nodes[coord].label == varToDerive ? "1" : "0")); last = tempNodes.size() - 1; } 
         else if (nodes[coord].label == "~") {
             size_t d = derive(nodes[coord].adj[0], varToDerive);
-            tempNodes.push_back(Node("~"));
-            tempNodes.back().adj = {d};
+            last = makeNeg(d);
         } else if (nodes[coord].label == "+") {
             size_t l = derive(nodes[coord].adj[0], varToDerive);
             size_t r = derive(nodes[coord].adj[1], varToDerive);
-            tempNodes.push_back(Node("+"));
-            tempNodes.back().adj = {l, r};
+            last = makeAdd(l, r);
         } else if (nodes[coord].label == "-") {
             size_t l = derive(nodes[coord].adj[0], varToDerive);
             size_t r = derive(nodes[coord].adj[1], varToDerive);
-            tempNodes.push_back(Node("-"));
-            tempNodes.back().adj = {l, r};
+            last = makeSub(l, r);
         } else if (nodes[coord].label == "*") {
             size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
             size_t g = transpose(nodes[coord].adj[1]);
             size_t g_prime = derive(nodes[coord].adj[1], varToDerive);
             size_t f = transpose(nodes[coord].adj[0]);
-            tempNodes.push_back(Node("*"));
-            tempNodes.back().adj = {f_prime, g};
-            size_t term1 = tempNodes.size() - 1;
-            tempNodes.push_back(Node("*"));
-            tempNodes.back().adj = {f, g_prime};
-            size_t term2 = tempNodes.size() - 1;
-            tempNodes.push_back(Node("+"));
-            tempNodes.back().adj = {term1, term2};
+            size_t term1 = makeMult(f_prime, g);
+            size_t term2 = makeMult(f, g_prime);
+            last = makeAdd(term1, term2);
         } else if (nodes[coord].label == "/") {
             size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
             size_t g = transpose(nodes[coord].adj[1]);
             size_t g_prime = derive(nodes[coord].adj[1], varToDerive);
             size_t f = transpose(nodes[coord].adj[0]);
             size_t my2 = getOrCreateConstant("2");
-            tempNodes.push_back(Node("*"));
-            tempNodes.back().adj = {f_prime, g};
-            size_t term1 = tempNodes.size() - 1;
-            tempNodes.push_back(Node("*"));
-            tempNodes.back().adj = {f, g_prime};
-            size_t term2 = tempNodes.size() - 1;
-            tempNodes.push_back(Node("-"));
-            tempNodes.back().adj = {term1, term2};
-            size_t term3 = tempNodes.size() - 1;
-            tempNodes.push_back(Node("^"));
-            tempNodes.back().adj = {g, my2};
-            size_t term4 = tempNodes.size() - 1;
-            tempNodes.push_back(Node("/"));
-            tempNodes.back().adj = {term3, term4};
+            size_t term1 = makeMult(f_prime, g);
+            size_t term2 = makeMult(f, g_prime);
+            size_t term3 = makeSub(term1, term2);
+            size_t term4 = makePow(g, my2);
+            last = makeDiv(term3, term4);
         } else if (nodes[coord].label == "^") {
-            if (dependsOn(nodes[coord].adj[0], varToDerive) || dependsOn(nodes[coord].adj[1], varToDerive)) {
+            if (!dependsOn(nodes[coord].adj[1], varToDerive)) {
+                size_t f = transpose(nodes[coord].adj[0]);
+                size_t c = transpose(nodes[coord].adj[1]);
+                size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
+                size_t c_minus_one = makeSub(c, getOrCreateConstant("1")); 
+                size_t lowered_power = makePow(f, c_minus_one);
+                size_t term1 = makeMult(c, lowered_power);
+                last = makeMult(term1, f_prime);
+            } else if (dependsOn(nodes[coord].adj[0], varToDerive) || dependsOn(nodes[coord].adj[1], varToDerive)) {
                 size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
                 size_t g = transpose(nodes[coord].adj[1]);
                 size_t g_prime = derive(nodes[coord].adj[1], varToDerive);
                 size_t f = transpose(nodes[coord].adj[0]);
-                tempNodes.push_back(Node("^"));
-                tempNodes.back().adj = {f, g};
-                size_t term1 = tempNodes.size() - 1;
-                tempNodes.push_back(Node("/"));
-                tempNodes.back().adj = {f_prime, f};
-                size_t term2 = tempNodes.size() - 1;
-                tempNodes.push_back(Node("*"));
-                tempNodes.back().adj = {g, term2};
-                size_t term3 = tempNodes.size() - 1;
-                tempNodes.push_back(Node("log"));
-                tempNodes.back().adj = {f};
-                size_t term4 = tempNodes.size() - 1;
-                tempNodes.push_back(Node("*"));
-                tempNodes.back().adj = {g_prime, term4};
-                size_t term5 = tempNodes.size() - 1;
-                tempNodes.push_back(Node("+"));
-                tempNodes.back().adj = {term3, term5};
-                size_t term6 = tempNodes.size() - 1;
-                tempNodes.push_back(Node("*"));
-                tempNodes.back().adj = {term1, term6};
-            } else { return getOrCreateConstant("0"); }
+                size_t term1 = makePow(f, g);
+                size_t term2 = makeDiv(f_prime, f);
+                size_t term3 = makeMult(g, term2);
+                size_t term4 = makeLog(f);
+                size_t term5 = makeMult(g_prime, term4);
+                size_t term6 = makeAdd(term3, term5);
+                last = makeMult(term1, term6);
+            } else { last = getOrCreateConstant("0"); }
         } else if (nodes[coord].label == "sin") {
             size_t f = transpose(nodes[coord].adj[0]);
             size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
-            tempNodes.push_back(Node("cos"));
-            tempNodes.back().adj = {f};
-            size_t term1 = tempNodes.size() - 1;
-            tempNodes.push_back(Node("*"));
-            tempNodes.back().adj = {term1, f_prime};
+            size_t term1 = makeCos(f);
+            last = makeMult(term1, f_prime);
         } else if (nodes[coord].label == "cos") {
             size_t f = transpose(nodes[coord].adj[0]);
             size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
-            tempNodes.push_back(Node("sin"));
-            tempNodes.back().adj = {f};
-            size_t term1 = tempNodes.size() - 1;
-            tempNodes.push_back(Node("~"));
-            tempNodes.back().adj = {term1};
-            size_t term2 = tempNodes.size() - 1;
-            tempNodes.push_back(Node("*"));
-            tempNodes.back().adj = {term2, f_prime};
+            size_t term1 = makeSin(f);
+            size_t term2 = makeNeg(term1);
+            last = makeMult(term2, f_prime);
         } else if (nodes[coord].label == "tan") {
             size_t f = transpose(nodes[coord].adj[0]);
             size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
             size_t my2 = getOrCreateConstant("2");
-            tempNodes.push_back(Node("cos"));
-            tempNodes.back().adj = {f};
-            size_t term1 = tempNodes.size() - 1;
-            tempNodes.push_back(Node("^"));
-            tempNodes.back().adj = {term1, my2};
-            size_t term2 = tempNodes.size() - 1;
-            tempNodes.push_back(Node("/"));
-            tempNodes.back().adj = {f_prime, term2};
+            size_t term1 = makeCos(f);
+            size_t term2 = makePow(term1, my2);
+            last = makeDiv(f_prime, term2);
         } else if (nodes[coord].label == "log") {
             size_t f = transpose(nodes[coord].adj[0]);
             size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
-            tempNodes.push_back(Node("/"));
-            tempNodes.back().adj = {f_prime, f};
+            last = makeDiv(f_prime, f);
         }
-        return deriveMemo[coord] = tempNodes.size() - 1;
+        return deriveMemo[coord] = last;
     }
 
 };
