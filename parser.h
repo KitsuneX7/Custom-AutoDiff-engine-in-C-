@@ -8,9 +8,9 @@
 #include <vector>
 using namespace std;
 
-unordered_map<string, int> precedence = {{"+", 1}, {"-", 1}, {"*", 2}, {"/", 2}, {"^", 3}, {"sin", 4}, {"cos", 4}, {"tan", 4}, {"log", 4}};
+unordered_map<string, int> precedence = {{"+", 1}, {"-", 1}, {"*", 2}, {"/", 2}, {"^", 3}, {"~", 4}, {"sin", 4}, {"cos", 4}, {"tan", 4}, {"log", 4}};
 set<char> binary = {'+', '-', '*', '/', '^'};
-set<string> unary = {"sin", "cos", "tan", "log"};
+set<string> unary = {"sin", "cos", "tan", "log", "~"};
 
 typedef enum {
     WHITE, GRAY, BLACK
@@ -68,15 +68,19 @@ public:
         bool searching = false;
         bool isNum = false;
         bool hasDot = false;
+        bool unaryMinus = true;
         for (size_t i = 0; i < expression.length(); i++) {
             if (expression[i] == ' ') continue;
+            if (unaryMinus && expression[i] == '-') { unaryMinus = true; tokens.push_back("~"); continue; }
             bool loopContinue = false;
             int ascii = int(expression[i]);
             if (!searching) {
-                if (expression[i] == '(' || expression[i] == ')') { tokens.push_back(string(1, expression[i])); continue; }
-                for (char b: binary) if (b == expression[i]) { string nextToken(1, expression[i]); tokens.push_back(nextToken); loopContinue = true; break; }
+                unaryMinus = false;
+                if (expression[i] == '(') { unaryMinus = true; tokens.push_back(string(1, expression[i])); continue; }
+                if (expression[i] == ')') { tokens.push_back(string(1, expression[i])); continue; }
+                for (char b: binary) if (b == expression[i]) { unaryMinus = true; string nextToken(1, expression[i]); tokens.push_back(nextToken); loopContinue = true; break; }
                 if (loopContinue) continue;
-                for (string u: unary) if (u[0] == expression[i]) { searching = true; isNum = false; previousChars += expression[i]; loopContinue = true; break; }
+                for (string u: unary) if (u[0] == expression[i]) { unaryMinus = true; searching = true; isNum = false; previousChars += expression[i]; loopContinue = true; break; }
                 if (loopContinue) continue;
                 if (ascii > 47 && ascii < 58) { searching = true; isNum = true; hasDot = false; previousChars += expression[i]; continue; }
                 if ((ascii > 64 && ascii < 91) || (ascii > 96 && ascii < 123))  { string nextToken(1, expression[i]); tokens.push_back(nextToken); continue; }
@@ -112,16 +116,22 @@ public:
         vector<string> tokens = tokenize(expression);
         queue<string> output;
         stack<string> operators;
-        for (size_t i = 0; i < tokens.size(); i++) { 
+        for (size_t i = 0; i < tokens.size(); i++) {
             if (tokens[i] == "(") { operators.push("("); continue; }
             if (tokens[i] == ")") {
                 while (!operators.empty() && operators.top() != "(") { output.push(operators.top()); operators.pop(); }
                 if (operators.empty()) throw invalid_argument("Invalid expression!"); else { operators.pop(); continue; }
             }
             bool isAtom = true;
+            bool isUnaryOp = false;
             for (auto& op: precedence) if (op.first == tokens[i]) isAtom = false;
+            for (string u: unary) if (u == tokens[i]) isUnaryOp = true;
             if (isAtom) output.push(tokens[i]); else {
-                while (!operators.empty() && operators.top() != "(" && precedence[tokens[i]] <= precedence[operators.top()]) { output.push(operators.top()); operators.pop(); }
+                if (isUnaryOp) {
+                    while (!operators.empty() && operators.top() != "(" && precedence[tokens[i]] < precedence[operators.top()]) { output.push(operators.top()); operators.pop(); }
+                } else {
+                    while (!operators.empty() && operators.top() != "(" && precedence[tokens[i]] <= precedence[operators.top()]) { output.push(operators.top()); operators.pop(); }
+                }
                 operators.push(tokens[i]);
             }
         }
@@ -158,9 +168,14 @@ public:
     string toInfix(int nodeCoord, int parentPrec = 0) const {
         Node node = nodes[nodeCoord];
         if (node.isLeaf()) return node.label;
+        if (node.label == "~") return "-" + toInfix(node.adj[0], 0);
         if (node.adj.size() == 1) { return node.label + "(" + toInfix(node.adj[0], 0) + ")"; }
         int currentPrecedence = precedence.at(node.label);
-        string result = toInfix(node.adj[0], currentPrecedence) + " " + node.label + " " + toInfix(node.adj[1], currentPrecedence);
+        int leftReq = currentPrecedence;
+        int rightReq = currentPrecedence;
+        if (node.label == "-" || node.label == "/") rightReq++;
+        if (node.label == "^") leftReq++;
+        string result = toInfix(node.adj[0], leftReq) + " " + node.label + " " + toInfix(node.adj[1], rightReq);
         if (currentPrecedence < parentPrec) { return "(" + result + ")"; } 
         return result;
     }
@@ -236,21 +251,28 @@ private:
         return transposeMemo[coord] = tempNodes.size() - 1;
     }
 
+    bool dependsOn(size_t coord, const string& varToDerive) {
+        if (nodes[coord].label == varToDerive) return true;
+        if (nodes[coord].adj.size() == 1) return dependsOn(nodes[coord].adj[0], varToDerive);
+        if (nodes[coord].adj.size() == 2) return dependsOn(nodes[coord].adj[0], varToDerive) || dependsOn(nodes[coord].adj[1], varToDerive);
+        return false;
+    }
+
     size_t derive(int coord, const string& varToDerive) {
         if (deriveMemo.count(coord)) return deriveMemo[coord];
         if (nodes[coord].isLeaf()) { tempNodes.push_back(Node(nodes[coord].label == varToDerive ? "1" : "0")); } 
-        else if (nodes[coord].label == "+") {
+        else if (nodes[coord].label == "~") {
+            size_t d = derive(nodes[coord].adj[0], varToDerive);
+            tempNodes.push_back(Node("~"));
+            tempNodes.back().adj = {d};
+        } else if (nodes[coord].label == "+") {
             size_t l = derive(nodes[coord].adj[0], varToDerive);
             size_t r = derive(nodes[coord].adj[1], varToDerive);
-            if (tempNodes[l].label == "0") return r;
-            if (tempNodes[r].label == "0") return l;
             tempNodes.push_back(Node("+"));
             tempNodes.back().adj = {l, r};
         } else if (nodes[coord].label == "-") {
             size_t l = derive(nodes[coord].adj[0], varToDerive);
             size_t r = derive(nodes[coord].adj[1], varToDerive);
-            if (tempNodes[l].label == "0") { getOrCreateConstant("-" + tempNodes[r].label); return tempNodes.size() - 1; }
-            if (tempNodes[r].label == "0") return l;
             tempNodes.push_back(Node("-"));
             tempNodes.back().adj = {l, r};
         } else if (nodes[coord].label == "*") {
@@ -271,6 +293,7 @@ private:
             size_t g = transpose(nodes[coord].adj[1]);
             size_t g_prime = derive(nodes[coord].adj[1], varToDerive);
             size_t f = transpose(nodes[coord].adj[0]);
+            size_t my2 = getOrCreateConstant("2");
             tempNodes.push_back(Node("*"));
             tempNodes.back().adj = {f_prime, g};
             size_t term1 = tempNodes.size() - 1;
@@ -281,10 +304,73 @@ private:
             tempNodes.back().adj = {term1, term2};
             size_t term3 = tempNodes.size() - 1;
             tempNodes.push_back(Node("^"));
-            tempNodes.back().adj = {g, getOrCreateConstant("2")};
+            tempNodes.back().adj = {g, my2};
             size_t term4 = tempNodes.size() - 1;
             tempNodes.push_back(Node("/"));
             tempNodes.back().adj = {term3, term4};
+        } else if (nodes[coord].label == "^") {
+            if (dependsOn(nodes[coord].adj[0], varToDerive) || dependsOn(nodes[coord].adj[1], varToDerive)) {
+                size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
+                size_t g = transpose(nodes[coord].adj[1]);
+                size_t g_prime = derive(nodes[coord].adj[1], varToDerive);
+                size_t f = transpose(nodes[coord].adj[0]);
+                tempNodes.push_back(Node("^"));
+                tempNodes.back().adj = {f, g};
+                size_t term1 = tempNodes.size() - 1;
+                tempNodes.push_back(Node("/"));
+                tempNodes.back().adj = {f_prime, f};
+                size_t term2 = tempNodes.size() - 1;
+                tempNodes.push_back(Node("*"));
+                tempNodes.back().adj = {g, term2};
+                size_t term3 = tempNodes.size() - 1;
+                tempNodes.push_back(Node("log"));
+                tempNodes.back().adj = {f};
+                size_t term4 = tempNodes.size() - 1;
+                tempNodes.push_back(Node("*"));
+                tempNodes.back().adj = {g_prime, term4};
+                size_t term5 = tempNodes.size() - 1;
+                tempNodes.push_back(Node("+"));
+                tempNodes.back().adj = {term3, term5};
+                size_t term6 = tempNodes.size() - 1;
+                tempNodes.push_back(Node("*"));
+                tempNodes.back().adj = {term1, term6};
+            } else { return getOrCreateConstant("0"); }
+        } else if (nodes[coord].label == "sin") {
+            size_t f = transpose(nodes[coord].adj[0]);
+            size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
+            tempNodes.push_back(Node("cos"));
+            tempNodes.back().adj = {f};
+            size_t term1 = tempNodes.size() - 1;
+            tempNodes.push_back(Node("*"));
+            tempNodes.back().adj = {term1, f_prime};
+        } else if (nodes[coord].label == "cos") {
+            size_t f = transpose(nodes[coord].adj[0]);
+            size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
+            tempNodes.push_back(Node("sin"));
+            tempNodes.back().adj = {f};
+            size_t term1 = tempNodes.size() - 1;
+            tempNodes.push_back(Node("~"));
+            tempNodes.back().adj = {term1};
+            size_t term2 = tempNodes.size() - 1;
+            tempNodes.push_back(Node("*"));
+            tempNodes.back().adj = {term2, f_prime};
+        } else if (nodes[coord].label == "tan") {
+            size_t f = transpose(nodes[coord].adj[0]);
+            size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
+            size_t my2 = getOrCreateConstant("2");
+            tempNodes.push_back(Node("cos"));
+            tempNodes.back().adj = {f};
+            size_t term1 = tempNodes.size() - 1;
+            tempNodes.push_back(Node("^"));
+            tempNodes.back().adj = {term1, my2};
+            size_t term2 = tempNodes.size() - 1;
+            tempNodes.push_back(Node("/"));
+            tempNodes.back().adj = {f_prime, term2};
+        } else if (nodes[coord].label == "log") {
+            size_t f = transpose(nodes[coord].adj[0]);
+            size_t f_prime = derive(nodes[coord].adj[0], varToDerive);
+            tempNodes.push_back(Node("/"));
+            tempNodes.back().adj = {f_prime, f};
         }
         return deriveMemo[coord] = tempNodes.size() - 1;
     }
