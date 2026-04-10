@@ -165,19 +165,8 @@ public:
         return Parsed;
     }
 
-    string toInfix(int nodeCoord, int parentPrec = 0) const {
-        Node node = nodes[nodeCoord];
-        if (node.isLeaf()) return node.label;
-        if (node.label == "~") return "-" + toInfix(node.adj[0], 0);
-        if (node.adj.size() == 1) { return node.label + "(" + toInfix(node.adj[0], 0) + ")"; }
-        int currentPrecedence = precedence.at(node.label);
-        int leftReq = currentPrecedence;
-        int rightReq = currentPrecedence;
-        if (node.label == "-" || node.label == "/") rightReq++;
-        if (node.label == "^") leftReq++;
-        string result = toInfix(node.adj[0], leftReq) + " " + node.label + " " + toInfix(node.adj[1], rightReq);
-        if (currentPrecedence < parentPrec) { return "(" + result + ")"; } 
-        return result;
+    string toInfix() const {
+        return toInfix(nodes.size() - 1);
     }
 
     DAG getPartialDerivative(string varToDerive) { 
@@ -236,6 +225,21 @@ private:
     unordered_map<string, size_t> constantMemo;
     unordered_map<size_t, size_t> transposeMemo;
     unordered_map<size_t, size_t> deriveMemo;
+
+    string toInfix(int nodeCoord, int parentPrec = 0) const {
+        Node node = nodes[nodeCoord];
+        if (node.isLeaf()) return node.label;
+        if (node.label == "~") return "(-" + toInfix(node.adj[0], 0) + ")";
+        if (node.adj.size() == 1) { return node.label + "(" + toInfix(node.adj[0], 0) + ")"; }
+        int currentPrecedence = precedence.at(node.label);
+        int leftReq = currentPrecedence;
+        int rightReq = currentPrecedence;
+        if (node.label == "-" || node.label == "/") rightReq++;
+        if (node.label == "^") leftReq++;
+        string result = toInfix(node.adj[0], leftReq) + " " + node.label + " " + toInfix(node.adj[1], rightReq);
+        if (currentPrecedence < parentPrec) { return "(" + result + ")"; } 
+        return result;
+    }
 
     size_t getOrCreateConstant(const string& constant) {
         if (constantMemo.count(constant)) return constantMemo[constant];
