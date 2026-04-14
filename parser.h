@@ -179,7 +179,7 @@ public:
         return PartialDerivative;
     }
 
-    void printVariables() { for (string var: variables) cout << "Variable 0: " << var << endl; }
+    void printVariables() { int i = 0; for (string var: variables) cout << "Variable " << i++ << ": " << var << endl; }
 
     double calculate(vector<double> values) {
         unordered_map<string, double> varValues;

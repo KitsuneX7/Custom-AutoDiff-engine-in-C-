@@ -9,6 +9,7 @@ int main() {
     DAG myDAG2 = myDAG.getPartialDerivative("x");
     cout << myDAG2.toInfix() << endl;
     vector<double> vars = {1, 2, 0.5};
+    myDAG.printVariables();
     double result = myDAG.calculate(vars);
     cout << result << endl;
     double result2 = myDAG2.calculate(vars);
