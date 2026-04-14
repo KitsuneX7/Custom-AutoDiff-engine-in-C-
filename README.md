@@ -5,4 +5,5 @@ Features so far:
 - Shunting-yard based parser
 - Recursive derivative calculator
 - Auxiliary functions for transposing recycled nodes / creating constants
-- used memoization to optimize runtime
+- Used memoization to optimize runtime
+- New in 1.1 -> calculate function implemented
