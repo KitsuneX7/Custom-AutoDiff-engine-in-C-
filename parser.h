@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <queue>
 #include <set>
@@ -37,8 +38,7 @@ public:
 
     vector<Node> nodes;
     vector<Node> tempNodes;
-    size_t tempCoord;
-    unordered_map<string, int> uniqueNodes;
+    set<string> variables;
     DAG(size_t num) : nodes(num) {}
 
     void addEdge(size_t a, size_t b) { nodes[a].adj.push_back(b); }
@@ -145,7 +145,7 @@ public:
             bool isUnaryOp = false;
             for (auto& op: precedence) if (op.first == output.front()) isAtom = false;
             for (string u: unary) if (u == output.front()) isUnaryOp = true;
-            if (isAtom) nodeOrder.push(i); else if (isUnaryOp) {
+            if (isAtom) { if (!isdigit(output.front()[0])) Parsed.variables.insert(output.front()); nodeOrder.push(i); } else if (isUnaryOp) {
                 if (nodeOrder.empty()) throw invalid_argument("Invalid expression!");
                 Parsed.addEdge(i, nodeOrder.top());
                 nodeOrder.pop();
@@ -175,7 +175,17 @@ public:
         size_t size = derive(nodes.size() - 1, varToDerive); 
         DAG PartialDerivative(size + 1);
         PartialDerivative.nodes = tempNodes;
+        PartialDerivative.variables = variables;
         return PartialDerivative;
+    }
+
+    void printVariables() { for (string var: variables) cout << "Variable 0: " << var << endl; }
+
+    double calculate(vector<double> values) {
+        unordered_map<string, double> varValues;
+        int tempAdder = 0;
+        for (string var: variables) varValues[var] = values[tempAdder++];
+        return calculate(nodes.size() - 1, varValues);
     }
 
     void printDFS() {
@@ -226,14 +236,14 @@ private:
     unordered_map<size_t, size_t> transposeMemo;
     unordered_map<size_t, size_t> deriveMemo;
 
-    string toInfix(int nodeCoord, int parentPrec = 0) const {
+    string toInfix(size_t nodeCoord, size_t parentPrec = 0) const {
         Node node = nodes[nodeCoord];
         if (node.isLeaf()) return node.label;
         if (node.label == "~") return "(-" + toInfix(node.adj[0], 0) + ")";
         if (node.adj.size() == 1) { return node.label + "(" + toInfix(node.adj[0], 0) + ")"; }
-        int currentPrecedence = precedence.at(node.label);
-        int leftReq = currentPrecedence;
-        int rightReq = currentPrecedence;
+        size_t currentPrecedence = precedence.at(node.label);
+        size_t leftReq = currentPrecedence;
+        size_t rightReq = currentPrecedence;
         if (node.label == "-" || node.label == "/") rightReq++;
         if (node.label == "^") leftReq++;
         string result = toInfix(node.adj[0], leftReq) + " " + node.label + " " + toInfix(node.adj[1], rightReq);
@@ -336,11 +346,11 @@ private:
         return tempNodes.size() - 1;
     }
 
-    size_t derive(int coord, const string& varToDerive) {
+    size_t derive(size_t coord, const string& varToDerive) {
         if (deriveMemo.count(coord)) return deriveMemo[coord];
         size_t last;
-        if (nodes[coord].isLeaf()) { tempNodes.push_back(Node(nodes[coord].label == varToDerive ? "1" : "0")); last = tempNodes.size() - 1; } 
-        else if (nodes[coord].label == "~") {
+        if (nodes[coord].isLeaf()) { tempNodes.push_back(Node(nodes[coord].label == varToDerive ? "1" : "0")); last = tempNodes.size() - 1; 
+        } else if (nodes[coord].label == "~") {
             size_t d = derive(nodes[coord].adj[0], varToDerive);
             last = makeNeg(d);
         } else if (nodes[coord].label == "+") {
@@ -416,6 +426,34 @@ private:
             last = makeDiv(f_prime, f);
         }
         return deriveMemo[coord] = last;
+    }
+
+    double calculate(size_t coord, unordered_map<string, double> varValues) {
+        if (nodes[coord].isLeaf()) { 
+            for (string var: variables) if (var == nodes[coord].label) return varValues[var];
+            return stod(nodes[coord].label);
+        } else if (nodes[coord].label == "~") {
+            return -1 * calculate(nodes[coord].adj[0], varValues);
+        } else if (nodes[coord].label == "+") {
+            return calculate(nodes[coord].adj[0], varValues) + calculate(nodes[coord].adj[1], varValues);
+        } else if (nodes[coord].label == "-") {
+            return calculate(nodes[coord].adj[0], varValues) - calculate(nodes[coord].adj[1], varValues);
+        } else if (nodes[coord].label == "*") {
+            return calculate(nodes[coord].adj[0], varValues) * calculate(nodes[coord].adj[1], varValues);
+        } else if (nodes[coord].label == "/") {
+            return calculate(nodes[coord].adj[0], varValues) / calculate(nodes[coord].adj[1], varValues);
+        } else if (nodes[coord].label == "^") {
+            return pow(calculate(nodes[coord].adj[0], varValues), calculate(nodes[coord].adj[1], varValues));
+        } else if (nodes[coord].label == "sin") {
+            return sin(calculate(nodes[coord].adj[0], varValues));
+        } else if (nodes[coord].label == "cos") {
+            return cos(calculate(nodes[coord].adj[0], varValues));
+        } else if (nodes[coord].label == "tan") {
+            return tan(calculate(nodes[coord].adj[0], varValues));
+        } else if (nodes[coord].label == "log") {
+            return log(calculate(nodes[coord].adj[0], varValues));
+        }
+        return 0;
     }
 
 };
