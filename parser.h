@@ -3,6 +3,7 @@
 #include <iostream>
 #include <queue>
 #include <set>
+#include <sstream>
 #include <stack>
 #include <string>
 #include <unordered_map>
@@ -23,7 +24,7 @@ public:
 
     string label;
     vector<size_t> adj;
-    bool visited;
+    bool visited; 
     COLOR color;
     Node() : visited(false), color(WHITE) {}
     Node(string l) : label(l), visited(false), color(WHITE) {}
@@ -279,9 +280,50 @@ private:
         return tempNodes.size() - 1;
     }
 
+    bool isNum(size_t coord, double& val) {
+        size_t pos = coord;
+        bool isNeg = false;
+        while (tempNodes[pos].label == "~") { pos = tempNodes[pos].adj[0]; isNeg = !isNeg; }
+        string lbl = tempNodes[pos].label;
+        for (auto& op: precedence) if (op.first == lbl) return false;
+        for (string var: variables) if (var == lbl) return false;
+        val = stod(lbl);
+        if (isNeg) val = -val;
+        return true;
+    }
+
     size_t makeAdd(size_t a, size_t b) {
         if (tempNodes[a].label == "0") return b;
         if (tempNodes[b].label == "0") return a;
+        double valA = 0, valB = 0;
+        bool aIsNum = isNum(a, valA);
+        bool bIsNum = isNum(b, valB);
+        if (aIsNum && bIsNum) { 
+            ostringstream oss; oss << (valA + valB); 
+            return getOrCreateConstant(oss.str()); 
+        }
+        if (aIsNum && tempNodes[b].label == "+") {
+            double valBLeft = 0, valBRight = 0;
+            if (isNum(tempNodes[b].adj[0], valBLeft)) {
+                ostringstream oss; oss << (valA + valBLeft);
+                return makeAdd(getOrCreateConstant(oss.str()), tempNodes[b].adj[1]);
+            }
+            if (isNum(tempNodes[b].adj[1], valBRight)) {
+                ostringstream oss; oss << (valA + valBRight);
+                return makeAdd(getOrCreateConstant(oss.str()), tempNodes[b].adj[0]);
+            }
+        }
+        if (bIsNum && tempNodes[a].label == "+") {
+            double valALeft = 0, valARight = 0;
+            if (isNum(tempNodes[a].adj[0], valALeft)) {
+                ostringstream oss; oss << (valB + valALeft);
+                return makeAdd(getOrCreateConstant(oss.str()), tempNodes[a].adj[1]);
+            }
+            if (isNum(tempNodes[a].adj[1], valARight)) {
+                ostringstream oss; oss << (valB + valARight);
+                return makeAdd(getOrCreateConstant(oss.str()), tempNodes[a].adj[0]);
+            }
+        }
         tempNodes.push_back(Node("+"));
         tempNodes.back().adj = {a, b};
         return tempNodes.size() - 1;
@@ -290,6 +332,17 @@ private:
     size_t makeSub(size_t a, size_t b) {
         if (tempNodes[a].label == "0") return makeNeg(b);
         if (tempNodes[b].label == "0") return a;
+        double valA = 0, valB = 0;
+        bool aIsNum = isNum(a, valA);
+        bool bIsNum = isNum(b, valB);
+        if (aIsNum && bIsNum) { 
+            ostringstream oss; oss << (valA - valB); 
+            return getOrCreateConstant(oss.str()); 
+        }
+        if (bIsNum) {
+            ostringstream oss; oss << (-valB);
+            return makeAdd(a, getOrCreateConstant(oss.str()));
+        }
         tempNodes.push_back(Node("-"));
         tempNodes.back().adj = {a, b};
         return tempNodes.size() - 1;
@@ -299,6 +352,40 @@ private:
         if (tempNodes[a].label == "0" || tempNodes[b].label == "0") return getOrCreateConstant("0");
         if (tempNodes[a].label == "1") return b;
         if (tempNodes[b].label == "1") return a;
+        double valA = 0, valB = 0;
+        bool aIsNum = isNum(a, valA);
+        bool bIsNum = isNum(b, valB);
+        if (aIsNum && bIsNum) { 
+            ostringstream oss; oss << (valA * valB); 
+            tempNodes.push_back(Node(oss.str())); 
+            return tempNodes.size() - 1; 
+        }
+        if (aIsNum && tempNodes[b].label == "*") {
+            double valBLeft = 0, valBRight = 0;
+            if (isNum(tempNodes[b].adj[0], valBLeft)) {
+                ostringstream oss; oss << (valA * valBLeft);
+                size_t newConst = getOrCreateConstant(oss.str());
+                return makeMult(newConst, tempNodes[b].adj[1]);
+            }
+            if (isNum(tempNodes[b].adj[1], valBRight)) {
+                ostringstream oss; oss << (valA * valBRight);
+                size_t newConst = getOrCreateConstant(oss.str());
+                return makeMult(newConst, tempNodes[b].adj[0]);
+            }
+        }
+        if (bIsNum && tempNodes[a].label == "*") {
+            double valALeft = 0, valARight = 0;
+            if (isNum(tempNodes[a].adj[0], valALeft)) {
+                ostringstream oss; oss << (valB * valALeft);
+                size_t newConst = getOrCreateConstant(oss.str());
+                return makeMult(newConst, tempNodes[a].adj[1]);
+            }
+            if (isNum(tempNodes[a].adj[1], valARight)) {
+                ostringstream oss; oss << (valB * valARight);
+                size_t newConst = getOrCreateConstant(oss.str());
+                return makeMult(newConst, tempNodes[a].adj[0]);
+            }
+        }
         tempNodes.push_back(Node("*"));
         tempNodes.back().adj = {a, b};
         return tempNodes.size() - 1;
@@ -307,6 +394,17 @@ private:
     size_t makeDiv(size_t a, size_t b) {
         if (tempNodes[a].label == "0") return getOrCreateConstant("0");
         if (tempNodes[a].label == tempNodes[b].label) return getOrCreateConstant("1");
+        double valA = 0, valB = 0;
+        bool aIsNum = isNum(a, valA);
+        bool bIsNum = isNum(b, valB);
+        if (aIsNum && bIsNum) { 
+            ostringstream oss; oss << (valA / valB); 
+            return getOrCreateConstant(oss.str()); 
+        }
+        if (bIsNum && valB != 0) {
+            ostringstream oss; oss << (1.0 / valB);
+            return makeMult(a, getOrCreateConstant(oss.str()));
+        }
         tempNodes.push_back(Node("/"));
         tempNodes.back().adj = {a, b};
         return tempNodes.size() - 1;
@@ -316,6 +414,21 @@ private:
         if (tempNodes[a].label == "0") return getOrCreateConstant("0");
         if (tempNodes[b].label == "0" || tempNodes[a].label == "1") return getOrCreateConstant("1");
         if (tempNodes[b].label == "1") return a;
+        double valA = 0, valB = 0;
+        bool aIsNum = isNum(a, valA);
+        bool bIsNum = isNum(b, valB);
+        if (aIsNum && bIsNum) { 
+            ostringstream oss; oss << pow(valA, valB); 
+            return getOrCreateConstant(oss.str()); 
+        }
+        if (bIsNum && tempNodes[a].label == "^") {
+            double valARight = 0;
+            if (isNum(tempNodes[a].adj[1], valARight)) {
+                ostringstream oss; oss << (valARight * valB);
+                size_t newConst = getOrCreateConstant(oss.str());
+                return makePow(tempNodes[a].adj[0], newConst);
+            }
+        }
         tempNodes.push_back(Node("^"));
         tempNodes.back().adj = {a, b};
         return tempNodes.size() - 1;
