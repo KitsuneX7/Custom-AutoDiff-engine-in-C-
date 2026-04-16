@@ -173,8 +173,10 @@ public:
     DAG getPartialDerivative(string varToDerive) { 
         deriveMemo.clear();
         transposeMemo.clear();
-        size_t size = derive(nodes.size() - 1, varToDerive); 
-        DAG PartialDerivative(size + 1);
+        constantMemo.clear();
+        size_t rootIndex = derive(nodes.size() - 1, varToDerive); 
+        if (!tempNodes.empty() && rootIndex != tempNodes.size() - 1) tempNodes.push_back(tempNodes[rootIndex]);
+        DAG PartialDerivative(tempNodes.size());
         PartialDerivative.nodes = tempNodes;
         PartialDerivative.variables = variables;
         return PartialDerivative;
