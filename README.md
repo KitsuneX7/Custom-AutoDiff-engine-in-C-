@@ -7,3 +7,4 @@ Features so far:
 - Auxiliary functions for transposing recycled nodes / creating constants
 - Used memoization to optimize runtime
 - New in 1.1 -> calculate function implemented
+- New in 1.2 -> constant folding implemented
