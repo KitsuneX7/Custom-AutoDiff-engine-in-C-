@@ -52,7 +52,7 @@ public:
         if (nodes[v].color == GRAY) return true;
         if (nodes[v].color == BLACK) return false;
         nodes[v].color = GRAY;
-        for (size_t nodeNum: nodes[v].adj) if (dfs_hasCycle(nodeNum)) return true; // Changed to size_t
+        for (size_t nodeNum: nodes[v].adj) if (dfs_hasCycle(nodeNum)) return true;
         nodes[v].color = BLACK;
         return false;
     }
@@ -166,9 +166,7 @@ public:
         return Parsed;
     }
 
-    string toInfix() const {
-        return toInfix(nodes.size() - 1);
-    }
+    string toInfix() const { return toInfix(nodes.size() - 1); }
 
     DAG getPartialDerivative(string varToDerive) { 
         deriveMemo.clear();
@@ -181,6 +179,8 @@ public:
         PartialDerivative.variables = variables;
         return PartialDerivative;
     }
+
+    vector<DAG> getGradient() { vector<DAG> gradient; for (string var: variables) gradient.push_back(getPartialDerivative(var)); return gradient; }
 
     void printVariables() { int i = 0; for (string var: variables) cout << "Variable " << i++ << ": " << var << endl; }
 
